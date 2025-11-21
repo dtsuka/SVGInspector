@@ -276,8 +276,57 @@ function App() {
     updateSvg(parsedDoc);
   };
 
+  const [leftPanelWidth, setLeftPanelWidth] = useState(250);
+  const [rightPanelWidth, setRightPanelWidth] = useState(300);
+  const [isResizing, setIsResizing] = useState<'left' | 'right' | null>(null);
+
+  const startResizing = useCallback((direction: 'left' | 'right') => {
+    setIsResizing(direction);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(null);
+  }, []);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (isResizing === 'left') {
+      setLeftPanelWidth(() => {
+        const newWidth = e.clientX;
+        if (newWidth < 100) return 100;
+        if (newWidth > 500) return 500;
+        return newWidth;
+      });
+    } else if (isResizing === 'right') {
+      setRightPanelWidth(() => {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth < 100) return 100;
+        if (newWidth > 500) return 500;
+        return newWidth;
+      });
+    }
+  }, [isResizing]);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+    };
+  }, [isResizing, resize, stopResizing]);
+
   return (
-    <div className="app-container">
+    <div 
+      className="app-container" 
+      style={{ 
+        gridTemplateColumns: `${leftPanelWidth}px 4px 1fr 4px ${rightPanelWidth}px`,
+        cursor: isResizing ? 'col-resize' : 'default',
+        userSelect: isResizing ? 'none' : 'auto'
+      }}
+    >
       <div className="panel left-panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px' }}>
           <h3>Layers</h3>
@@ -295,6 +344,12 @@ function App() {
           />
         )}
       </div>
+      
+      <div 
+        className={`splitter ${isResizing === 'left' ? 'resizing' : ''}`}
+        onMouseDown={() => startResizing('left')}
+      />
+
       <div className="panel center-panel">
         <Preview 
           svgContent={svgContent} 
@@ -302,6 +357,12 @@ function App() {
           selectedNodePaths={selectedNodePaths} 
         />
       </div>
+
+      <div 
+        className={`splitter ${isResizing === 'right' ? 'resizing' : ''}`}
+        onMouseDown={() => startResizing('right')}
+      />
+
       <div className="panel right-panel">
         <AttributeEditor 
           node={selectedNode} 
