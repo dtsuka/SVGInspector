@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface AttributeEditorProps {
   node: Element | null;
@@ -19,13 +19,28 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
   const [newStyleValue, setNewStyleValue] = useState('');
   const [styleDropTarget, setStyleDropTarget] = useState<{name: string, position: 'before' | 'after'} | null>(null);
 
+  const focusedAttrRef = useRef<string | null>(null);
+  const focusedStyleRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (node) {
       const attrs = Array.from(node.attributes).map(attr => ({
         name: attr.name,
         value: attr.value
       }));
-      setAttributes(attrs);
+      
+      setAttributes(prev => {
+        if (focusedAttrRef.current) {
+          return attrs.map(a => {
+            if (a.name === focusedAttrRef.current) {
+              const prevAttr = prev.find(p => p.name === a.name);
+              return prevAttr ? { ...a, value: prevAttr.value } : a;
+            }
+            return a;
+          });
+        }
+        return attrs;
+      });
 
       // Parse style attribute
       const styleAttr = attrs.find(a => a.name === 'style');
@@ -40,7 +55,19 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
               value: values.join(':').trim()
             };
           });
-        setStyleProperties(props);
+        
+        setStyleProperties(prev => {
+          if (focusedStyleRef.current) {
+            return props.map(p => {
+              if (p.name === focusedStyleRef.current) {
+                const prevProp = prev.find(x => x.name === p.name);
+                return prevProp ? { ...p, value: prevProp.value } : p;
+              }
+              return p;
+            });
+          }
+          return props;
+        });
       } else {
         setStyleProperties([]);
       }
@@ -67,9 +94,15 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
     }
   };
 
+  const handleAttrChange = (name: string, value: string) => {
+    setAttributes(prev => prev.map(a => a.name === name ? { ...a, value } : a));
+    onChange(name, value);
+  };
+
   const handleAddStyle = () => {
     if (newStyleKey && newStyleValue) {
       const newProps = [...styleProperties, { name: newStyleKey, value: newStyleValue }];
+      setStyleProperties(newProps);
       updateStyleAttribute(newProps);
       setNewStyleKey('');
       setNewStyleValue('');
@@ -78,11 +111,13 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
 
   const handleDeleteStyle = (name: string) => {
     const newProps = styleProperties.filter(p => p.name !== name);
+    setStyleProperties(newProps);
     updateStyleAttribute(newProps);
   };
 
   const handleStyleChange = (name: string, value: string) => {
     const newProps = styleProperties.map(p => p.name === name ? { ...p, value } : p);
+    setStyleProperties(newProps);
     updateStyleAttribute(newProps);
   };
 
@@ -169,6 +204,7 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
           } else {
             newProps.splice(newTargetIndex + 1, 0, draggedItem);
           }
+          setStyleProperties(newProps);
           updateStyleAttribute(newProps);
         }
       }
@@ -205,7 +241,9 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
                 <>
                   <input 
                     value={attr.value} 
-                    onChange={(e) => onChange(attr.name, e.target.value)}
+                    onChange={(e) => handleAttrChange(attr.name, e.target.value)}
+                    onFocus={() => focusedAttrRef.current = attr.name}
+                    onBlur={() => focusedAttrRef.current = null}
                     style={{ flex: 1 }}
                   />
                   <button onClick={() => onDelete(attr.name)}>x</button>
@@ -239,6 +277,8 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
                     <input 
                       value={prop.value}
                       onChange={(e) => handleStyleChange(prop.name, e.target.value)}
+                      onFocus={() => focusedStyleRef.current = prop.name}
+                      onBlur={() => focusedStyleRef.current = null}
                       style={{ flex: 1, fontSize: '0.9em' }}
                     />
                     <button onClick={() => handleDeleteStyle(prop.name)} style={{ fontSize: '0.8em' }}>x</button>
