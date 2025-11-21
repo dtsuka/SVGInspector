@@ -50,3 +50,15 @@ h3 {
   font-size: 12px;
   text-transform: uppercase;
 }
+
+.splitter {
+  width: 4px;
+  background-color: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.splitter:hover, .splitter.resizing {
+  background-color: var(--vscode-focusBorder);
+}
