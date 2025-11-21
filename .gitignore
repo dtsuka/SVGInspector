@@ -3,4 +3,5 @@ out
 webview-ui/node_modules
 webview-ui/build
 dist
+design-assets
 *.vsix

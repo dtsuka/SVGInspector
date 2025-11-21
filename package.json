@@ -2,7 +2,7 @@
   "name": "svg-inspector",
   "displayName": "SVG Inspector",
   "description": "Visual SVG Editor for VS Code",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -15,6 +15,7 @@
   "categories": [
     "Visualization"
   ],
+  "icon": "src/icon.png",
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
