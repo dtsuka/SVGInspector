@@ -23,7 +23,13 @@ function App() {
 
   useEffect(() => {
     selectedNodesRef.current = selectedNodes;
-  }, [selectedNodes]);
+    
+    // Persist selection state
+    if (parsedDoc && parsedDoc.documentElement) {
+      const paths = selectedNodes.map(node => getNodePath(node, parsedDoc.documentElement!));
+      vscode.setState({ selectedNodePaths: paths });
+    }
+  }, [selectedNodes, parsedDoc]);
 
   // Handle messages from extension
   useEffect(() => {
@@ -36,7 +42,12 @@ function App() {
           const currentSelected = selectedNodesRef.current;
           let pathsToRestore: number[][] = [];
           
-          if (currentDoc && currentDoc.documentElement && currentSelected.length > 0) {
+          // First check if we have a persisted state from vscode
+          const state = vscode.getState() as { selectedNodePaths: number[][] } | undefined;
+          if (state && state.selectedNodePaths && state.selectedNodePaths.length > 0) {
+            pathsToRestore = state.selectedNodePaths;
+          } else if (currentDoc && currentDoc.documentElement && currentSelected.length > 0) {
+             // Fallback to current selection if available (e.g. hot reload)
              pathsToRestore = currentSelected.map(node => getNodePath(node, currentDoc.documentElement));
           }
 
