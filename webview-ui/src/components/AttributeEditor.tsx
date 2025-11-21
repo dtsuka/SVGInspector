@@ -4,12 +4,14 @@ interface AttributeEditorProps {
   node: Element | null;
   onChange: (name: string, value: string) => void;
   onDelete: (name: string) => void;
+  onReorder: (draggedName: string, targetName: string, position: 'before' | 'after') => void;
 }
 
-export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange, onDelete }) => {
+export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange, onDelete, onReorder }) => {
   const [attributes, setAttributes] = useState<{name: string, value: string}[]>([]);
   const [newAttrKey, setNewAttrKey] = useState('');
   const [newAttrValue, setNewAttrValue] = useState('');
+  const [dropTarget, setDropTarget] = useState<{name: string, position: 'before' | 'after'} | null>(null);
 
   useEffect(() => {
     if (node) {
@@ -35,12 +37,61 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, name: string) => {
+    e.dataTransfer.setData('text/plain', name);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    if (y < height / 2) {
+      setDropTarget({ name: targetName, position: 'before' });
+    } else {
+      setDropTarget({ name: targetName, position: 'after' });
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetName: string) => {
+    e.preventDefault();
+    const draggedName = e.dataTransfer.getData('text/plain');
+    
+    if (draggedName && dropTarget) {
+      onReorder(draggedName, targetName, dropTarget.position);
+    }
+    setDropTarget(null);
+  };
+
   return (
     <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <h3>Attributes</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
         {attributes.map(attr => (
-          <div key={attr.name} style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+          <div 
+            key={attr.name} 
+            draggable
+            onDragStart={(e) => handleDragStart(e, attr.name)}
+            onDragOver={(e) => handleDragOver(e, attr.name)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, attr.name)}
+            style={{ 
+              display: 'flex', 
+              gap: '5px', 
+              alignItems: 'center',
+              borderTop: dropTarget?.name === attr.name && dropTarget.position === 'before' ? '2px solid #007fd4' : '2px solid transparent',
+              borderBottom: dropTarget?.name === attr.name && dropTarget.position === 'after' ? '2px solid #007fd4' : '2px solid transparent',
+              cursor: 'grab'
+            }}
+          >
             <span style={{ width: '80px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={attr.name}>{attr.name}</span>
             <input 
               value={attr.value} 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { LayerTree } from './components/LayerTree';
 import { Preview } from './components/Preview';
 import { AttributeEditor } from './components/AttributeEditor';
@@ -14,16 +14,56 @@ function App() {
   const [selectedNodes, setSelectedNodes] = useState<Element[]>([]);
 
   // Handle messages from extension
+  const parsedDocRef = useRef<Document | null>(null);
+  const selectedNodesRef = useRef<Element[]>([]);
+
+  useEffect(() => {
+    parsedDocRef.current = parsedDoc;
+  }, [parsedDoc]);
+
+  useEffect(() => {
+    selectedNodesRef.current = selectedNodes;
+  }, [selectedNodes]);
+
+  // Handle messages from extension
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
       switch (message.type) {
         case 'load':
+          // Try to preserve selection
+          const currentDoc = parsedDocRef.current;
+          const currentSelected = selectedNodesRef.current;
+          let pathsToRestore: number[][] = [];
+          
+          if (currentDoc && currentDoc.documentElement && currentSelected.length > 0) {
+             pathsToRestore = currentSelected.map(node => getNodePath(node, currentDoc.documentElement));
+          }
+
           setSvgContent(message.svgText);
           const doc = parseSvg(message.svgText);
           setParsedDoc(doc);
-          setSelectedNode(null);
-          setSelectedNodes([]);
+          
+          if (doc && doc.documentElement && pathsToRestore.length > 0) {
+            const newSelectedNodes: Element[] = [];
+            pathsToRestore.forEach(path => {
+              const node = getNodeByPath(doc.documentElement, path);
+              if (node) {
+                newSelectedNodes.push(node);
+              }
+            });
+            
+            if (newSelectedNodes.length > 0) {
+              setSelectedNodes(newSelectedNodes);
+              setSelectedNode(newSelectedNodes[newSelectedNodes.length - 1]);
+            } else {
+              setSelectedNode(null);
+              setSelectedNodes([]);
+            }
+          } else {
+            setSelectedNode(null);
+            setSelectedNodes([]);
+          }
           break;
       }
     };
@@ -183,6 +223,48 @@ function App() {
     return selectedNodes.map(node => getNodePath(node, parsedDoc.documentElement));
   }, [selectedNodes, parsedDoc]);
 
+  const handleAttributeReorder = (draggedName: string, targetName: string, position: 'before' | 'after') => {
+    if (!selectedNode || !parsedDoc) return;
+
+    const attributes = Array.from(selectedNode.attributes);
+    const draggedAttr = attributes.find(a => a.name === draggedName);
+    const targetAttr = attributes.find(a => a.name === targetName);
+
+    if (!draggedAttr || !targetAttr) return;
+
+    // Create a new order of attributes
+    const newAttributes: {name: string, value: string}[] = [];
+    
+    attributes.forEach(attr => {
+      if (attr.name === draggedName) return; // Skip dragged attribute, we'll insert it later
+      
+      if (attr.name === targetName) {
+        if (position === 'before') {
+          newAttributes.push({ name: draggedName, value: draggedAttr.value });
+          newAttributes.push({ name: attr.name, value: attr.value });
+        } else {
+          newAttributes.push({ name: attr.name, value: attr.value });
+          newAttributes.push({ name: draggedName, value: draggedAttr.value });
+        }
+      } else {
+        newAttributes.push({ name: attr.name, value: attr.value });
+      }
+    });
+
+    // Re-apply attributes in the new order
+    // First remove all attributes
+    while (selectedNode.attributes.length > 0) {
+      selectedNode.removeAttribute(selectedNode.attributes[0].name);
+    }
+
+    // Then add them back in order
+    newAttributes.forEach(attr => {
+      selectedNode.setAttribute(attr.name, attr.value);
+    });
+
+    updateSvg(parsedDoc);
+  };
+
   return (
     <div className="app-container">
       <div className="panel left-panel">
@@ -213,7 +295,8 @@ function App() {
         <AttributeEditor 
           node={selectedNode} 
           onChange={handleAttributeChange} 
-          onDelete={handleAttributeDelete} 
+          onDelete={handleAttributeDelete}
+          onReorder={handleAttributeReorder}
         />
       </div>
     </div>
