@@ -32,3 +32,42 @@ export const getNodeByPath = (root: Element, path: number[]): Element | null => 
 
   return current;
 };
+
+/** パンくず1項目：ルートから該当ノードまでのパスと表示用ラベル断片 */
+export type SvgBreadcrumbItem = {
+  path: number[];
+  tagName: string;
+  idSuffix: string;
+  classSuffix: string;
+};
+
+/**
+ * 主選択ノードから svg ルートまでの祖先チェーン（ルート→葉）を返す。
+ * selected が root 配下でない場合は空配列。
+ */
+export function getSvgBreadcrumbItems(root: Element, selected: Element | null): SvgBreadcrumbItem[] {
+  if (!selected || !root.contains(selected)) {
+    return [];
+  }
+
+  const chain: Element[] = [];
+  let current: Element | null = selected;
+  while (current) {
+    chain.unshift(current);
+    if (current === root) {
+      break;
+    }
+    current = current.parentElement;
+  }
+
+  if (chain.length === 0 || chain[0] !== root) {
+    return [];
+  }
+
+  return chain.map((el) => ({
+    path: getNodePath(el, root),
+    tagName: el.tagName,
+    idSuffix: el.id ? `#${el.id}` : '',
+    classSuffix: el.classList.length ? `.${Array.from(el.classList).join('.')}` : '',
+  }));
+}

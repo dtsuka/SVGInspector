@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { LayerTree } from './components/LayerTree';
 import { Preview } from './components/Preview';
 import { AttributeEditor } from './components/AttributeEditor';
-import { parseSvg, serializeSvg, getNodePath, getNodeByPath } from './utils/svgUtils';
+import { parseSvg, serializeSvg, getNodePath, getNodeByPath, getSvgBreadcrumbItems } from './utils/svgUtils';
 import { vscode } from './utils/vscode';
 import './App.css';
 
@@ -234,6 +234,12 @@ function App() {
     return selectedNodes.map(node => getNodePath(node, parsedDoc.documentElement));
   }, [selectedNodes, parsedDoc]);
 
+  /** 主選択ノードに対するルート→現在のパンくず（複数選択時は最後に選択されたノード基準） */
+  const breadcrumbItems = useMemo(() => {
+    if (!parsedDoc?.documentElement || !selectedNode) return [];
+    return getSvgBreadcrumbItems(parsedDoc.documentElement, selectedNode);
+  }, [parsedDoc, selectedNode]);
+
   const handleAttributeReorder = (draggedName: string, targetName: string, position: 'before' | 'after') => {
     if (!selectedNode || !parsedDoc) return;
 
@@ -328,7 +334,7 @@ function App() {
       }}
     >
       <div className="panel left-panel">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px', position: 'sticky', top: 0, backgroundColor: 'var(--vscode-sideBar-background)' }}>
           <h3>Layers</h3>
           <button onClick={handleGroup} disabled={selectedNodes.length < 2} style={{ fontSize: '12px', padding: '2px 5px' }}>
             Group
@@ -355,6 +361,7 @@ function App() {
           svgContent={svgContent} 
           onSelect={handlePreviewSelect} 
           selectedNodePaths={selectedNodePaths} 
+          breadcrumbItems={breadcrumbItems}
         />
       </div>
 

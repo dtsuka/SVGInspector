@@ -22,6 +22,112 @@
   flex-direction: column;
   overflow: hidden; /* Fix for persistent scrollbar */
 }
+
+/* SVGプレビュー：中央パネル内で縦いっぱいに広げる */
+.preview-root {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--vscode-editor-background);
+  overflow: hidden;
+}
+
+/* パンくず：左上オーバーレイ（長い階層は横スクロール） */
+.preview-breadcrumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  max-width: 100%;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  background-color: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  border-right: 1px solid var(--vscode-panel-border);
+  border-bottom-right-radius: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  pointer-events: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.preview-breadcrumb-list {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.preview-breadcrumb-li {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.preview-breadcrumb-sep {
+  color: var(--vscode-descriptionForeground);
+  margin: 0 4px;
+  user-select: none;
+}
+
+.preview-breadcrumb-btn {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 0;
+  margin: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.preview-breadcrumb-btn:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.preview-breadcrumb-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.preview-breadcrumb-tag {
+  color: var(--vscode-symbolIcon-classForeground, #569cd6);
+}
+
+.preview-breadcrumb-id {
+  color: var(--vscode-symbolIcon-stringForeground, #d7ba7d);
+}
+
+.preview-breadcrumb-class {
+  color: var(--vscode-symbolIcon-interfaceForeground, #4ec9b0);
+}
+
+/* パンくず下のSVGエリア */
+.preview-svg-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #1e1e1e;
+}
+
 .svg-image {
   background-position: 0 0, 8px 8px;
   background-size: 16px 16px;

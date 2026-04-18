@@ -1,14 +1,20 @@
 import { useEffect, useRef } from 'react';
 import panzoom from 'panzoom';
-import { getNodePath, getNodeByPath } from '../utils/svgUtils';
+import { getNodePath, getNodeByPath, type SvgBreadcrumbItem } from '../utils/svgUtils';
 
 interface PreviewProps {
   svgContent: string;
   onSelect: (path: number[], multi: boolean) => void;
   selectedNodePaths: number[][];
+  breadcrumbItems: SvgBreadcrumbItem[];
 }
 
-export const Preview: React.FC<PreviewProps> = ({ svgContent, onSelect, selectedNodePaths }) => {
+export const Preview: React.FC<PreviewProps> = ({
+  svgContent,
+  onSelect,
+  selectedNodePaths,
+  breadcrumbItems,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
 
@@ -69,19 +75,47 @@ export const Preview: React.FC<PreviewProps> = ({ svgContent, onSelect, selected
   }, [selectedNodePaths, svgContent]);
 
   return (
-    <div 
-      ref={containerRef} 
-      style={{ 
-        width: '100%', 
-        height: '100%', 
-        overflow: 'hidden', 
-        backgroundColor: '#1e1e1e', // Dark background
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center'
-      }}
+    <div
+      ref={containerRef}
+      className="preview-root"
     >
-      <div className="svg-image" ref={svgContainerRef} />
+      {breadcrumbItems.length > 0 && (
+        <nav
+          className="preview-breadcrumb"
+          aria-label="Selection path"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <ol className="preview-breadcrumb-list">
+            {breadcrumbItems.map((item, index) => (
+              <li key={`${item.path.join('-')}-${index}`} className="preview-breadcrumb-li">
+                {index > 0 && (
+                  <span className="preview-breadcrumb-sep" aria-hidden>
+                    ›
+                  </span>
+                )}
+                <button
+                  type="button"
+                  className="preview-breadcrumb-btn"
+                  title={`Select ${item.tagName}${item.idSuffix}${item.classSuffix}`}
+                  onClick={() => onSelect(item.path, false)}
+                >
+                  <span className="preview-breadcrumb-tag">{item.tagName}</span>
+                  {item.idSuffix && (
+                    <span className="preview-breadcrumb-id">{item.idSuffix}</span>
+                  )}
+                  {item.classSuffix && (
+                    <span className="preview-breadcrumb-class">{item.classSuffix}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+      <div className="preview-svg-wrap">
+        <div className="svg-image" ref={svgContainerRef} />
+      </div>
     </div>
   );
 };

@@ -2,6 +2,30 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "webview:dev",
+			"type": "shell",
+			"command": "pnpm dev",
+			"options": {
+				"cwd": "${workspaceFolder}/webview-ui"
+			},
+			"isBackground": true,
+			"problemMatcher": {
+				"owner": "custom",
+				"fileLocation": "absolute",
+				"pattern": {
+					"regexp": ".*"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": ".*VITE.*",
+					"endsPattern": ".*Local:.*(127\\.0\\.0\\.1|localhost):5173.*"
+				}
+			},
+			"presentation": {
+				"reveal": "never"
+			}
+		},
+		{
 			"type": "npm",
 			"script": "watch",
 			"problemMatcher": "$tsc-watch",
@@ -13,6 +37,15 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"label": "Start Debug Environment",
+			"dependsOrder": "parallel",
+			"dependsOn": [
+				"npm: watch",
+				"webview:dev"
+			],
+			"problemMatcher": []
 		},
 		{
 			"type": "npm",

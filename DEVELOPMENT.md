@@ -21,7 +21,7 @@ cd webview-ui && pnpm build
 ```
 
 デバッグ実行:
-`cd webview-ui && pnpm dev` を実行してから VS Code の「実行とデバッグ」サイドバーから "Run Extension" を選択して実行してください。
+VS Code の「実行とデバッグ」サイドバーから "Run Extension" を選択して実行してください。起動時に TypeScript の watch と `webview-ui` の Vite dev server が自動で開始されます。
 
 ## 拡張機能のパッケージ化 (.vsix の作成)
 
