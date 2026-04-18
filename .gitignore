@@ -5,3 +5,4 @@ webview-ui/build
 dist
 design-assets
 *.vsix
+sample/_map.svg
