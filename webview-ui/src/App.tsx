@@ -3,6 +3,12 @@ import { LayerTree } from './components/LayerTree';
 import { Preview } from './components/Preview';
 import { AttributeEditor } from './components/AttributeEditor';
 import { parseSvg, serializeSvg, getNodePath, getNodeByPath, getSvgBreadcrumbItems } from './utils/svgUtils';
+import {
+  type SelectionModifier,
+  collectVisibleLayerNodes,
+  getRangeBetween,
+  pathKey,
+} from './utils/selectionUtils';
 import { vscode } from './utils/vscode';
 import './App.css';
 
@@ -12,10 +18,12 @@ function App() {
   const [selectedNode, setSelectedNode] = useState<Element | null>(null);
 
   const [selectedNodes, setSelectedNodes] = useState<Element[]>([]);
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() => new Set());
 
   // Handle messages from extension
   const parsedDocRef = useRef<Document | null>(null);
   const selectedNodesRef = useRef<Element[]>([]);
+  const selectionAnchorRef = useRef<Element | null>(null);
 
   useEffect(() => {
     parsedDocRef.current = parsedDoc;
@@ -66,14 +74,18 @@ function App() {
             
             if (newSelectedNodes.length > 0) {
               setSelectedNodes(newSelectedNodes);
-              setSelectedNode(newSelectedNodes[newSelectedNodes.length - 1]);
+              const primary = newSelectedNodes[newSelectedNodes.length - 1];
+              setSelectedNode(primary);
+              selectionAnchorRef.current = primary;
             } else {
               setSelectedNode(null);
               setSelectedNodes([]);
+              selectionAnchorRef.current = null;
             }
           } else {
             setSelectedNode(null);
             setSelectedNodes([]);
+            selectionAnchorRef.current = null;
           }
           break;
       }
@@ -124,31 +136,84 @@ function App() {
     }
   };
 
-  const handleNodeSelect = (node: Element, multi: boolean) => {
-    if (multi) {
-      setSelectedNodes(prev => {
-        const exists = prev.includes(node);
-        let newSelection;
-        if (exists) {
-          newSelection = prev.filter(n => n !== node);
-        } else {
-          newSelection = [...prev, node];
-        }
-        // Update primary selection to the last selected one, or null if empty
-        setSelectedNode(newSelection.length > 0 ? newSelection[newSelection.length - 1] : null);
-        return newSelection;
-      });
-    } else {
-      setSelectedNode(node);
-      setSelectedNodes([node]);
-    }
-  };
+  const isNodeExpanded = useCallback(
+    (node: Element) => {
+      const root = parsedDoc?.documentElement;
+      if (!root) return true;
+      return !collapsedPaths.has(pathKey(getNodePath(node, root)));
+    },
+    [parsedDoc, collapsedPaths]
+  );
 
-  const handlePreviewSelect = (path: number[], multi: boolean) => {
+  const handleToggleExpand = useCallback(
+    (node: Element) => {
+      const root = parsedDoc?.documentElement;
+      if (!root) return;
+      const key = pathKey(getNodePath(node, root));
+      setCollapsedPaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+    },
+    [parsedDoc]
+  );
+
+  const handleNodeSelect = useCallback(
+    (node: Element, modifier: SelectionModifier) => {
+      const root = parsedDoc?.documentElement;
+      if (!root) return;
+
+      switch (modifier) {
+        case 'none': {
+          selectionAnchorRef.current = node;
+          setSelectedNode(node);
+          setSelectedNodes([node]);
+          break;
+        }
+        case 'toggle': {
+          setSelectedNodes((prev) => {
+            const exists = prev.includes(node);
+            const newSelection = exists
+              ? prev.filter((n) => n !== node)
+              : [...prev, node];
+            setSelectedNode(
+              exists
+                ? newSelection.length > 0
+                  ? newSelection[newSelection.length - 1]
+                  : null
+                : node
+            );
+            if (newSelection.length === 0) {
+              selectionAnchorRef.current = null;
+            }
+            return newSelection;
+          });
+          break;
+        }
+        case 'range': {
+          const anchor =
+            selectionAnchorRef.current ?? selectedNodesRef.current[0] ?? node;
+          const ordered = collectVisibleLayerNodes(root, isNodeExpanded);
+          const range = getRangeBetween(ordered, anchor, node);
+          setSelectedNodes(range);
+          setSelectedNode(node);
+          break;
+        }
+      }
+    },
+    [parsedDoc, isNodeExpanded]
+  );
+
+  const handlePreviewSelect = (path: number[], modifier: SelectionModifier) => {
     if (parsedDoc && parsedDoc.documentElement) {
       const node = getNodeByPath(parsedDoc.documentElement, path);
       if (node) {
-        handleNodeSelect(node, multi);
+        handleNodeSelect(node, modifier);
       }
     }
   };
@@ -345,7 +410,9 @@ function App() {
             node={parsedDoc.documentElement} 
             onSelect={handleNodeSelect} 
             onToggleVisibility={handleToggleVisibility}
+            onToggleExpand={handleToggleExpand}
             onMoveNode={handleMoveNode}
+            isNodeExpanded={isNodeExpanded}
             selectedNodes={selectedNodes} 
           />
         )}

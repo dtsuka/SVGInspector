@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import panzoom from 'panzoom';
 import { getNodePath, getNodeByPath, type SvgBreadcrumbItem } from '../utils/svgUtils';
+import { modifierFromMouseEvent, type SelectionModifier } from '../utils/selectionUtils';
 
 interface PreviewProps {
   svgContent: string;
-  onSelect: (path: number[], multi: boolean) => void;
+  onSelect: (path: number[], modifier: SelectionModifier) => void;
   selectedNodePaths: number[][];
   breadcrumbItems: SvgBreadcrumbItem[];
 }
@@ -38,11 +39,10 @@ export const Preview: React.FC<PreviewProps> = ({
         element.addEventListener('click', (e) => {
           e.stopPropagation();
           const mouseEvent = e as unknown as MouseEvent;
-          const isMulti = mouseEvent.metaKey || mouseEvent.ctrlKey || mouseEvent.shiftKey;
           if (svgContainerRef.current && svgContainerRef.current.firstElementChild) {
              const root = svgContainerRef.current.firstElementChild;
              const path = getNodePath(e.target as Element, root);
-             onSelect(path, isMulti);
+             onSelect(path, modifierFromMouseEvent(mouseEvent));
           }
         });
         
@@ -98,7 +98,7 @@ export const Preview: React.FC<PreviewProps> = ({
                   type="button"
                   className="preview-breadcrumb-btn"
                   title={`Select ${item.tagName}${item.idSuffix}${item.classSuffix}`}
-                  onClick={() => onSelect(item.path, false)}
+                  onClick={() => onSelect(item.path, 'none')}
                 >
                   <span className="preview-breadcrumb-tag">{item.tagName}</span>
                   {item.idSuffix && (

@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { EyeIcon, EyeOffIcon, ChevronRightIcon, ChevronDownIcon } from './Icons';
+import { modifierFromMouseEvent, type SelectionModifier } from '../utils/selectionUtils';
 
 interface LayerTreeProps {
   node: Element;
-  onSelect: (node: Element, multi: boolean) => void;
+  onSelect: (node: Element, modifier: SelectionModifier) => void;
   onToggleVisibility: (node: Element) => void;
+  onToggleExpand: (node: Element) => void;
   onMoveNode: (source: Element[], target: Element, position: 'before' | 'after' | 'inside') => void;
+  isNodeExpanded: (node: Element) => boolean;
   selectedNodes: Element[];
   depth?: number;
 }
@@ -13,15 +16,17 @@ interface LayerTreeProps {
 export const LayerTree: React.FC<LayerTreeProps> = ({ 
   node, 
   onSelect, 
-  onToggleVisibility, 
+  onToggleVisibility,
+  onToggleExpand,
   onMoveNode,
+  isNodeExpanded,
   selectedNodes, 
   depth = 0 
 }) => {
   const children = Array.from(node.children);
   const isSelected = selectedNodes.includes(node);
   const hasChildren = children.length > 0;
-  const [isExpanded, setIsExpanded] = useState(true);
+  const isExpanded = isNodeExpanded(node);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside' | null>(null);
 
   // Check visibility
@@ -34,13 +39,12 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
 
   const handleSelect = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const isMulti = e.metaKey || e.ctrlKey || e.shiftKey;
-    onSelect(node, isMulti);
+    onSelect(node, modifierFromMouseEvent(e));
   };
 
   const toggleExpand = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
+    onToggleExpand(node);
   };
 
   const handleVisibilityClick = (e: React.MouseEvent) => {
@@ -137,10 +141,17 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
           display: 'flex',
           alignItems: 'center',
           whiteSpace: 'nowrap',
-          border: isSelected ? '1px solid #007fd4' : '1px solid transparent',
-          borderTop: dropPosition === 'before' ? '2px solid #007fd4' : undefined,
-          borderBottom: dropPosition === 'after' ? '2px solid #007fd4' : undefined,
+          boxSizing: 'border-box',
+          border: '1px solid',
+          borderColor: isSelected ? '#007fd4' : 'transparent',
+          boxShadow:
+            dropPosition === 'before'
+              ? 'inset 0 2px 0 0 #007fd4'
+              : dropPosition === 'after'
+                ? 'inset 0 -2px 0 0 #007fd4'
+                : undefined,
           outline: dropPosition === 'inside' ? '2px dashed #007fd4' : undefined,
+          outlineOffset: dropPosition === 'inside' ? -2 : undefined,
           opacity: isBeingDragged ? 0.5 : 1
         }}
       >
@@ -192,7 +203,9 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
               node={child} 
               onSelect={onSelect} 
               onToggleVisibility={onToggleVisibility}
+              onToggleExpand={onToggleExpand}
               onMoveNode={onMoveNode}
+              isNodeExpanded={isNodeExpanded}
               selectedNodes={selectedNodes} 
               depth={depth + 1} 
             />
