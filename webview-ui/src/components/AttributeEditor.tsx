@@ -94,6 +94,13 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
     }
   };
 
+  const handleAddKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAdd();
+    }
+  };
+
   const handleAttrChange = (name: string, value: string) => {
     setAttributes(prev => prev.map(a => a.name === name ? { ...a, value } : a));
     onChange(name, value);
@@ -312,12 +319,14 @@ export const AttributeEditor: React.FC<AttributeEditorProps> = ({ node, onChange
             placeholder="Name" 
             value={newAttrKey} 
             onChange={e => setNewAttrKey(e.target.value)}
+            onKeyDown={handleAddKeyDown}
             style={{ width: '80px' }}
           />
           <input 
             placeholder="Value" 
             value={newAttrValue} 
             onChange={e => setNewAttrValue(e.target.value)}
+            onKeyDown={handleAddKeyDown}
             style={{ flex: 1 }}
           />
         </div>
