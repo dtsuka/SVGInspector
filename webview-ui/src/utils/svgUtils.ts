@@ -3,6 +3,22 @@ export const parseSvg = (svgText: string): Document => {
   return parser.parseFromString(svgText, "image/svg+xml");
 };
 
+/**
+ * パース結果が正しい SVG 文書でなければ、エラーメッセージを返す。
+ * 不正な XML の場合、DOMParser は例外を出さずに <parsererror> を含む文書を返すため、ここで判定する。
+ */
+export const getSvgParseError = (doc: Document): string | null => {
+  const parserError = doc.getElementsByTagName('parsererror')[0];
+  if (parserError) {
+    return parserError.textContent?.trim() || 'Invalid XML';
+  }
+  const root = doc.documentElement;
+  if (!root || root.localName !== 'svg') {
+    return 'Root element is not <svg>';
+  }
+  return null;
+};
+
 export const serializeSvg = (doc: Document): string => {
   const serializer = new XMLSerializer();
   return serializer.serializeToString(doc);

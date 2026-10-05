@@ -2,12 +2,20 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { LayerTree } from './components/LayerTree';
 import { Preview } from './components/Preview';
 import { AttributeEditor } from './components/AttributeEditor';
-import { parseSvg, serializeSvg, getNodePath, getNodeByPath, getSvgBreadcrumbItems } from './utils/svgUtils';
+import {
+  parseSvg,
+  serializeSvg,
+  getNodePath,
+  getNodeByPath,
+  getSvgBreadcrumbItems,
+  getSvgParseError,
+} from './utils/svgUtils';
 import {
   type SelectionModifier,
   collectVisibleLayerNodes,
   getRangeBetween,
   pathKey,
+  parsePathKey,
 } from './utils/selectionUtils';
 import { vscode } from './utils/vscode';
 import './App.css';
@@ -19,6 +27,9 @@ function App() {
 
   const [selectedNodes, setSelectedNodes] = useState<Element[]>([]);
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() => new Set());
+  const [parseError, setParseError] = useState<string | null>(null);
+  // parsedDoc は同じ Document を直接書き換えるため、構造変更の検知用に版番号を持つ
+  const [docVersion, setDocVersion] = useState(0);
 
   // Handle messages from extension
   const parsedDocRef = useRef<Document | null>(null);
@@ -37,7 +48,7 @@ function App() {
       const paths = selectedNodes.map(node => getNodePath(node, parsedDoc.documentElement!));
       vscode.setState({ selectedNodePaths: paths });
     }
-  }, [selectedNodes, parsedDoc]);
+  }, [selectedNodes, parsedDoc, docVersion]);
 
   // Handle messages from extension
   useEffect(() => {
@@ -59,8 +70,21 @@ function App() {
              pathsToRestore = currentSelected.map(node => getNodePath(node, currentDoc.documentElement));
           }
 
-          setSvgContent(message.svgText);
           const doc = parseSvg(message.svgText);
+          const error = getSvgParseError(doc);
+          if (error) {
+            // 不正な文書は編集対象にしない（保存すると parsererror 入りの文書でファイルを上書きしてしまうため）。
+            // vscode の保存済み選択は残し、正しい文書に戻ったときに復元する。
+            setParseError(error);
+            setSvgContent('');
+            setParsedDoc(null);
+            setSelectedNode(null);
+            setSelectedNodes([]);
+            selectionAnchorRef.current = null;
+            break;
+          }
+          setParseError(null);
+          setSvgContent(message.svgText);
           setParsedDoc(doc);
           
           if (doc && doc.documentElement && pathsToRestore.length > 0) {
@@ -101,9 +125,14 @@ function App() {
 
   // Sync changes back to extension
   const updateSvg = useCallback((newDoc: Document) => {
+    if (getSvgParseError(newDoc)) {
+      console.warn('Refusing to save an invalid SVG document');
+      return;
+    }
     const newSvgText = serializeSvg(newDoc);
     setSvgContent(newSvgText);
     setParsedDoc(newDoc); // Update local state
+    setDocVersion((v) => v + 1);
     vscode.postMessage({
       type: 'updateSvg',
       svgText: newSvgText
@@ -218,6 +247,18 @@ function App() {
     }
   };
 
+  /** 要素の移動・グループ化の前後で、折りたたみ状態を同じ要素に付け直す */
+  const applyStructureChange = (doc: Document, mutate: () => void) => {
+    const root = doc.documentElement;
+    const collapsedNodes = Array.from(collapsedPaths)
+      .map((key) => getNodeByPath(root, parsePathKey(key)))
+      .filter((node): node is Element => node !== null);
+
+    mutate();
+
+    setCollapsedPaths(new Set(collapsedNodes.map((node) => pathKey(getNodePath(node, root)))));
+  };
+
   const handleGroup = () => {
     if (selectedNodes.length < 2 || !parsedDoc) return;
 
@@ -246,12 +287,14 @@ function App() {
       return indexA - indexB;
     });
 
-    // Insert group before the first node
-    firstParent.insertBefore(group, sortedNodes[0]);
+    applyStructureChange(parsedDoc, () => {
+      // Insert group before the first node
+      firstParent.insertBefore(group, sortedNodes[0]);
 
-    // Move nodes into group
-    sortedNodes.forEach(node => {
-      group.appendChild(node);
+      // Move nodes into group
+      sortedNodes.forEach(node => {
+        group.appendChild(node);
+      });
     });
 
     // Update selection to the new group
@@ -280,16 +323,18 @@ function App() {
     // If position is 'after', insert them after the target (in reverse order to maintain selection order, or just insert before target.nextSibling).
     // If position is 'inside', append them to target.
 
-    if (position === 'inside') {
-      validSources.forEach(source => target.appendChild(source));
-    } else if (position === 'before') {
-      validSources.forEach(source => parent?.insertBefore(source, target));
-    } else if (position === 'after') {
-      // Insert in reverse order so they end up in the correct order after the target
-      // Or just find the reference node (target.nextSibling) and insert before it
-      const referenceNode = target.nextElementSibling;
-      validSources.forEach(source => parent?.insertBefore(source, referenceNode));
-    }
+    applyStructureChange(parsedDoc, () => {
+      if (position === 'inside') {
+        validSources.forEach(source => target.appendChild(source));
+      } else if (position === 'before') {
+        validSources.forEach(source => parent?.insertBefore(source, target));
+      } else if (position === 'after') {
+        // Insert in reverse order so they end up in the correct order after the target
+        // Or just find the reference node (target.nextSibling) and insert before it
+        const referenceNode = target.nextElementSibling;
+        validSources.forEach(source => parent?.insertBefore(source, referenceNode));
+      }
+    });
 
     updateSvg(parsedDoc);
   };
@@ -297,13 +342,13 @@ function App() {
   const selectedNodePaths = useMemo(() => {
     if (!parsedDoc || !parsedDoc.documentElement) return [];
     return selectedNodes.map(node => getNodePath(node, parsedDoc.documentElement));
-  }, [selectedNodes, parsedDoc]);
+  }, [selectedNodes, parsedDoc, docVersion]);
 
   /** 主選択ノードに対するルート→現在のパンくず（複数選択時は最後に選択されたノード基準） */
   const breadcrumbItems = useMemo(() => {
     if (!parsedDoc?.documentElement || !selectedNode) return [];
     return getSvgBreadcrumbItems(parsedDoc.documentElement, selectedNode);
-  }, [parsedDoc, selectedNode]);
+  }, [parsedDoc, selectedNode, docVersion]);
 
   const handleAttributeReorder = (draggedName: string, targetName: string, position: 'before' | 'after') => {
     if (!selectedNode || !parsedDoc) return;
@@ -424,6 +469,12 @@ function App() {
       />
 
       <div className="panel center-panel">
+        {parseError && (
+          <div className="parse-error" role="alert">
+            <strong>Cannot display this SVG.</strong> Fix the file in the text editor to continue editing.
+            <pre>{parseError}</pre>
+          </div>
+        )}
         <Preview 
           svgContent={svgContent} 
           onSelect={handlePreviewSelect} 

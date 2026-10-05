@@ -31,29 +31,31 @@ export const Preview: React.FC<PreviewProps> = ({
     }
   }, []);
 
+  // onSelect は親の再描画ごとに変わるため ref で保持し、SVG の再描画は svgContent の変化時だけに限る
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  // クリックはコンテナで1つのリスナーにまとめて受ける
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const root = container.firstElementChild;
+      const target = e.target as Element | null;
+      if (!root || !target || !root.contains(target)) return;
+      onSelectRef.current(getNodePath(target, root), modifierFromMouseEvent(e));
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => container.removeEventListener('click', handleClick);
+  }, []);
+
   useEffect(() => {
     if (svgContainerRef.current) {
       svgContainerRef.current.innerHTML = svgContent;
-      
-      const attachListeners = (element: Element) => {
-        element.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const mouseEvent = e as unknown as MouseEvent;
-          if (svgContainerRef.current && svgContainerRef.current.firstElementChild) {
-             const root = svgContainerRef.current.firstElementChild;
-             const path = getNodePath(e.target as Element, root);
-             onSelect(path, modifierFromMouseEvent(mouseEvent));
-          }
-        });
-        
-        Array.from(element.children).forEach(attachListeners);
-      };
-
-      if (svgContainerRef.current.firstElementChild) {
-         attachListeners(svgContainerRef.current.firstElementChild);
-      }
     }
-  }, [svgContent, onSelect]);
+  }, [svgContent]);
 
   // Highlight selection
   useEffect(() => {
