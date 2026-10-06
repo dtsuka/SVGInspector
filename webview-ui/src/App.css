@@ -168,3 +168,20 @@ h3 {
 .splitter:hover, .splitter.resizing {
   background-color: var(--vscode-focusBorder);
 }
+
+/* SVG のパースエラー表示 */
+.parse-error {
+  margin: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+  background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+.parse-error pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--vscode-editor-font-family, monospace);
+}

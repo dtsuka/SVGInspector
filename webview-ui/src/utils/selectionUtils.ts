@@ -57,3 +57,8 @@ export function getRangeBetween(
 export function pathKey(path: number[]): string {
   return path.join(',');
 }
+
+/** pathKey の逆変換（ルートの '' は空配列） */
+export function parsePathKey(key: string): number[] {
+  return key === '' ? [] : key.split(',').map(Number);
+}
