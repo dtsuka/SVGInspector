@@ -1,12 +1,17 @@
 import { useEffect, useRef } from 'react';
 import panzoom from 'panzoom';
 import { getNodePath, getNodeByPath, type SvgBreadcrumbItem } from '../utils/svgUtils';
-import { modifierFromMouseEvent, type SelectionModifier } from '../utils/selectionUtils';
+import { modifierFromMouseEvent, parsePathKey, type SelectionModifier } from '../utils/selectionUtils';
+
+/** プレビューで隠した要素に付ける目印（値は隠す前の style.display） */
+const HIDDEN_ATTR = 'data-svg-inspector-hidden';
 
 interface PreviewProps {
   svgContent: string;
   onSelect: (path: number[], modifier: SelectionModifier) => void;
   selectedNodePaths: number[][];
+  /** プレビューでだけ隠す要素のパス（pathKey 形式） */
+  hiddenPaths: Set<string>;
   breadcrumbItems: SvgBreadcrumbItem[];
 }
 
@@ -14,6 +19,7 @@ export const Preview: React.FC<PreviewProps> = ({
   svgContent,
   onSelect,
   selectedNodePaths,
+  hiddenPaths,
   breadcrumbItems,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +81,28 @@ export const Preview: React.FC<PreviewProps> = ({
         }
       });
   }, [selectedNodePaths, svgContent]);
+
+  // 非表示（ファイルは変更せず、プレビューの DOM にだけ display: none を付ける）
+  useEffect(() => {
+    const root = svgContainerRef.current?.firstElementChild;
+    if (!root) return;
+
+    // 前回隠した要素を元の display に戻す（元の値は data 属性に退避してある）
+    const restore = (el: Element) => {
+      (el as HTMLElement).style.display = el.getAttribute(HIDDEN_ATTR) ?? '';
+      el.removeAttribute(HIDDEN_ATTR);
+    };
+    if (root.hasAttribute(HIDDEN_ATTR)) restore(root);
+    root.querySelectorAll(`[${HIDDEN_ATTR}]`).forEach(restore);
+
+    hiddenPaths.forEach((key) => {
+      const target = getNodeByPath(root, parsePathKey(key));
+      if (target) {
+        target.setAttribute(HIDDEN_ATTR, (target as HTMLElement).style.display);
+        (target as HTMLElement).style.display = 'none';
+      }
+    });
+  }, [hiddenPaths, svgContent]);
 
   return (
     <div

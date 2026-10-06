@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
 
+/** 改行コードの違い（CRLF / LF）を無視して比較するための正規化 */
+const normalizeEol = (text: string) => text.replace(/\r\n/g, '\n');
+
 export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
 
   public static register(context: vscode.ExtensionContext): vscode.Disposable {
@@ -29,6 +32,10 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
     // Send initial content
     // this.updateWebview(webviewPanel.webview, document); // Wait for ready signal
 
+    // Webview から受け取って反映した直後のテキスト。この変更による onDidChangeTextDocument は
+    // Webview 側がすでに同じ内容を持っているので、送り返さない
+    let pendingEchoText: string | undefined;
+
     // Handle messages from the webview
     webviewPanel.webview.onDidReceiveMessage(e => {
       console.log('SvgEditorProvider: Received message', e.type);
@@ -38,6 +45,10 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
           this.updateWebview(webviewPanel.webview, document);
           return;
         case 'updateSvg':
+          if (normalizeEol(e.svgText) === normalizeEol(document.getText())) {
+            return;
+          }
+          pendingEchoText = e.svgText;
           this.updateTextDocument(document, e.svgText);
           return;
       }
@@ -45,9 +56,16 @@ export class SvgEditorProvider implements vscode.CustomTextEditorProvider {
 
     // Listen for changes in the document (e.g. from other editors)
     const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument(e => {
-      if (e.document.uri.toString() === document.uri.toString()) {
-        this.updateWebview(webviewPanel.webview, document);
+      // 保存などで内容が変わっていない通知は無視する
+      if (e.document.uri.toString() !== document.uri.toString() || e.contentChanges.length === 0) {
+        return;
       }
+      if (pendingEchoText !== undefined && normalizeEol(document.getText()) === normalizeEol(pendingEchoText)) {
+        pendingEchoText = undefined;
+        return;
+      }
+      pendingEchoText = undefined;
+      this.updateWebview(webviewPanel.webview, document);
     });
 
     webviewPanel.onDidDispose(() => {
