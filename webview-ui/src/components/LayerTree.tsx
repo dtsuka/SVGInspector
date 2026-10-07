@@ -9,7 +9,11 @@ interface LayerTreeProps {
   onToggleExpand: (node: Element) => void;
   onMoveNode: (source: Element[], target: Element, position: 'before' | 'after' | 'inside') => void;
   isNodeExpanded: (node: Element) => boolean;
+  isNodeHidden: (node: Element) => boolean;
   selectedNodes: Element[];
+  /** ドラッグ中のノード（ドラッグしていなければ null） */
+  draggedNodes: Element[] | null;
+  onDragNodesChange: (nodes: Element[] | null) => void;
   depth?: number;
 }
 
@@ -20,7 +24,10 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
   onToggleExpand,
   onMoveNode,
   isNodeExpanded,
+  isNodeHidden,
   selectedNodes, 
+  draggedNodes,
+  onDragNodesChange,
   depth = 0 
 }) => {
   const children = Array.from(node.children);
@@ -29,8 +36,8 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
   const isExpanded = isNodeExpanded(node);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside' | null>(null);
 
-  // Check visibility
-  const isVisible = node.getAttribute('visibility') !== 'hidden';
+  // プレビュー上の表示状態（ファイルの属性ではない）
+  const isVisible = !isNodeHidden(node);
 
   // Skip non-graphical elements if needed, but for now show everything
   const tagName = node.tagName;
@@ -56,23 +63,22 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
   const handleDragStart = (e: React.DragEvent) => {
     e.stopPropagation();
     
-    // Determine what is being dragged
-    let draggedNodes: Element[] = [node];
-    
     // If the current node is part of the selection, drag all selected nodes
-    if (selectedNodes.includes(node)) {
-      draggedNodes = [...selectedNodes];
-    }
-    
-    (window as any).__draggedNodes = draggedNodes;
+    const nodes = selectedNodes.includes(node) ? [...selectedNodes] : [node];
+    onDragNodesChange(nodes);
     e.dataTransfer.effectAllowed = 'move';
+  };
+
+  // ドロップせずに終わった場合（キャンセル・ツリーの外へのドロップ）もドラッグ状態を消す
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.stopPropagation();
+    onDragNodesChange(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    const draggedNodes = (window as any).__draggedNodes as Element[];
     if (!draggedNodes || draggedNodes.length === 0) {
       setDropPosition(null);
       return;
@@ -110,15 +116,14 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
     e.preventDefault();
     e.stopPropagation();
     
-    const draggedNodes = (window as any).__draggedNodes as Element[];
     if (draggedNodes && dropPosition) {
       onMoveNode(draggedNodes, node, dropPosition);
     }
     setDropPosition(null);
-    (window as any).__draggedNodes = null;
+    onDragNodesChange(null);
   };
 
-  const isBeingDragged = (window as any).__draggedNodes?.includes(node);
+  const isBeingDragged = draggedNodes?.includes(node) ?? false;
 
   return (
     <div style={{ 
@@ -130,6 +135,7 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
       <div 
         draggable
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -206,7 +212,10 @@ export const LayerTree: React.FC<LayerTreeProps> = ({
               onToggleExpand={onToggleExpand}
               onMoveNode={onMoveNode}
               isNodeExpanded={isNodeExpanded}
+              isNodeHidden={isNodeHidden}
               selectedNodes={selectedNodes} 
+              draggedNodes={draggedNodes}
+              onDragNodesChange={onDragNodesChange}
               depth={depth + 1} 
             />
           ))}

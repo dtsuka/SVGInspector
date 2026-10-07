@@ -20,6 +20,9 @@ import {
 import { vscode } from './utils/vscode';
 import './App.css';
 
+/** 編集結果を拡張機能へ送るまでの待ち時間（この間の連続した入力は1回の編集にまとめる） */
+const POST_DELAY_MS = 300;
+
 function App() {
   const [svgContent, setSvgContent] = useState<string>('');
   const [parsedDoc, setParsedDoc] = useState<Document | null>(null);
@@ -30,11 +33,30 @@ function App() {
   const [parseError, setParseError] = useState<string | null>(null);
   // parsedDoc は同じ Document を直接書き換えるため、構造変更の検知用に版番号を持つ
   const [docVersion, setDocVersion] = useState(0);
+  // 非表示はプレビュー上だけの状態で、ファイルには書き込まない
+  const [hiddenPaths, setHiddenPaths] = useState<Set<string>>(() => new Set());
+  // レイヤーツリーでドラッグ中のノード
+  const [draggedNodes, setDraggedNodes] = useState<Element[] | null>(null);
 
   // Handle messages from extension
   const parsedDocRef = useRef<Document | null>(null);
   const selectedNodesRef = useRef<Element[]>([]);
   const selectionAnchorRef = useRef<Element | null>(null);
+  // 現在の SVG テキスト（保存時にルート要素の前後を元のまま残すために使う）
+  const svgContentRef = useRef('');
+  // 拡張機能へまだ送っていない編集結果
+  const pendingPostRef = useRef<{ timer: number; svgText: string } | null>(null);
+  // 最後に拡張機能へ送ったテキスト（送り返されてきた load を見分けるため）
+  const lastPostedRef = useRef<string | null>(null);
+
+  const flushPendingPost = useCallback(() => {
+    const pending = pendingPostRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingPostRef.current = null;
+    lastPostedRef.current = pending.svgText;
+    vscode.postMessage({ type: 'updateSvg', svgText: pending.svgText });
+  }, []);
 
   useEffect(() => {
     parsedDocRef.current = parsedDoc;
@@ -56,6 +78,19 @@ function App() {
       const message = event.data;
       switch (message.type) {
         case 'load':
+          // 自分が送った編集がそのまま戻ってきた場合は、再パースしない
+          if (message.svgText === svgContentRef.current || message.svgText === lastPostedRef.current) {
+            lastPostedRef.current = null;
+            break;
+          }
+          // Undo などの外部変更。以降に同じテキストへ戻った場合（Redo）は反映する必要がある
+          lastPostedRef.current = null;
+          // 未送信の編集がある間に外部で変更された場合は、外部の変更を優先する
+          if (pendingPostRef.current) {
+            window.clearTimeout(pendingPostRef.current.timer);
+            pendingPostRef.current = null;
+          }
+
           // Try to preserve selection
           const currentDoc = parsedDocRef.current;
           const currentSelected = selectedNodesRef.current;
@@ -76,6 +111,7 @@ function App() {
             // 不正な文書は編集対象にしない（保存すると parsererror 入りの文書でファイルを上書きしてしまうため）。
             // vscode の保存済み選択は残し、正しい文書に戻ったときに復元する。
             setParseError(error);
+            svgContentRef.current = '';
             setSvgContent('');
             setParsedDoc(null);
             setSelectedNode(null);
@@ -84,6 +120,7 @@ function App() {
             break;
           }
           setParseError(null);
+          svgContentRef.current = message.svgText;
           setSvgContent(message.svgText);
           setParsedDoc(doc);
           
@@ -115,12 +152,22 @@ function App() {
       }
     };
 
+    // フォーカスが外れたときや閉じるときは、未送信の編集をすぐに送る
+    const flush = () => flushPendingPost();
+
     window.addEventListener('message', handleMessage);
+    window.addEventListener('blur', flush);
+    window.addEventListener('pagehide', flush);
     
     // Signal that we are ready to receive data
     vscode.postMessage({ type: 'ready' });
 
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('blur', flush);
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
   }, []);
 
   // Sync changes back to extension
@@ -129,14 +176,20 @@ function App() {
       console.warn('Refusing to save an invalid SVG document');
       return;
     }
-    const newSvgText = serializeSvg(newDoc);
+    const newSvgText = serializeSvg(newDoc, svgContentRef.current);
+    svgContentRef.current = newSvgText;
     setSvgContent(newSvgText);
     setParsedDoc(newDoc); // Update local state
     setDocVersion((v) => v + 1);
-    vscode.postMessage({
-      type: 'updateSvg',
-      svgText: newSvgText
-    });
+
+    // 入力のたびにファイル全体を置き換えると Undo が1文字単位になるため、少し待ってまとめて送る
+    if (pendingPostRef.current) {
+      window.clearTimeout(pendingPostRef.current.timer);
+    }
+    pendingPostRef.current = {
+      svgText: newSvgText,
+      timer: window.setTimeout(flushPendingPost, POST_DELAY_MS),
+    };
   }, []);
 
   const handleAttributeChange = (name: string, value: string) => {
@@ -154,16 +207,28 @@ function App() {
   };
 
   const handleToggleVisibility = (node: Element) => {
-    if (parsedDoc) {
-      const currentVisibility = node.getAttribute('visibility');
-      if (currentVisibility === 'hidden') {
-        node.removeAttribute('visibility');
+    const root = parsedDoc?.documentElement;
+    if (!root) return;
+    const key = pathKey(getNodePath(node, root));
+    setHiddenPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        node.setAttribute('visibility', 'hidden');
+        next.add(key);
       }
-      updateSvg(parsedDoc);
-    }
+      return next;
+    });
   };
+
+  const isNodeHidden = useCallback(
+    (node: Element) => {
+      const root = parsedDoc?.documentElement;
+      if (!root) return false;
+      return hiddenPaths.has(pathKey(getNodePath(node, root)));
+    },
+    [parsedDoc, hiddenPaths]
+  );
 
   const isNodeExpanded = useCallback(
     (node: Element) => {
@@ -247,16 +312,23 @@ function App() {
     }
   };
 
-  /** 要素の移動・グループ化の前後で、折りたたみ状態を同じ要素に付け直す */
+  /** 要素の移動・グループ化の前後で、折りたたみ・非表示の状態を同じ要素に付け直す */
   const applyStructureChange = (doc: Document, mutate: () => void) => {
     const root = doc.documentElement;
-    const collapsedNodes = Array.from(collapsedPaths)
-      .map((key) => getNodeByPath(root, parsePathKey(key)))
-      .filter((node): node is Element => node !== null);
+    const toNodes = (paths: Set<string>) =>
+      Array.from(paths)
+        .map((key) => getNodeByPath(root, parsePathKey(key)))
+        .filter((node): node is Element => node !== null);
+    const toPaths = (nodes: Element[]) =>
+      new Set(nodes.map((node) => pathKey(getNodePath(node, root))));
+
+    const collapsedNodes = toNodes(collapsedPaths);
+    const hiddenNodes = toNodes(hiddenPaths);
 
     mutate();
 
-    setCollapsedPaths(new Set(collapsedNodes.map((node) => pathKey(getNodePath(node, root)))));
+    setCollapsedPaths(toPaths(collapsedNodes));
+    setHiddenPaths(toPaths(hiddenNodes));
   };
 
   const handleGroup = () => {
@@ -458,7 +530,10 @@ function App() {
             onToggleExpand={handleToggleExpand}
             onMoveNode={handleMoveNode}
             isNodeExpanded={isNodeExpanded}
+            isNodeHidden={isNodeHidden}
             selectedNodes={selectedNodes} 
+            draggedNodes={draggedNodes}
+            onDragNodesChange={setDraggedNodes}
           />
         )}
       </div>
@@ -479,6 +554,7 @@ function App() {
           svgContent={svgContent} 
           onSelect={handlePreviewSelect} 
           selectedNodePaths={selectedNodePaths} 
+          hiddenPaths={hiddenPaths}
           breadcrumbItems={breadcrumbItems}
         />
       </div>
